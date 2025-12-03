@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Financiero Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        :root { --color-primary: #3b82f6; --color-bg: #f3f4f6; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--color-bg); color: #1f2937; }
+        
+        /* Estilos Generales */
+        .card { background: white; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #e5e7eb; }
+        .btn { padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.875rem; }
+        .btn-primary { background-color: #3b82f6; color: white; } .btn-primary:hover { background-color: #2563eb; }
+        .btn-danger { background-color: #ef4444; color: white; } .btn-danger:hover { background-color: #dc2626; }
+        .btn-secondary { background-color: #6b7280; color: white; } .btn-info { background-color: #0ea5e9; color: white; }
+        .btn-success { background-color: #22c55e; color: white; }
+        .btn-warning { background-color: #f59e0b; color: white; }
+
+        .input-field { border-radius: 0.375rem; border: 1px solid #d1d5db; padding: 0.5rem 0.75rem; width: 100%; }
+        .input-field:focus { border-color: #3b82f6; outline: none; ring: 2px solid #bfdbfe; }
+
+        /* Tabs */
+        .tab-btn { padding: 0.75rem 1.5rem; cursor: pointer; border-radius: 0.375rem 0.375rem 0 0; font-weight: 600; background: #e5e7eb; color: #4b5563; margin-right: 2px; }
+        .tab-btn.active { background: white; color: #3b82f6; border-bottom: 2px solid white; }
+        .tab-content { display: none; background: white; padding: 1.5rem; border-radius: 0 0.5rem 0.5rem 0.5rem; min-height: 80vh; }
+        .tab-content.active { display: block; }
+
+        /* Estilos Específicos Tarjetas (Traídos de tu archivo Control TC) */
+        .installment-adjust-btn { padding: 0.1rem 0.4rem; border-radius: 9999px; font-size: 0.75rem; font-weight: bold; border: 1px solid; margin: 0 2px; }
+        .decrement-paid-btn { color: #ef4444; border-color: #fca5a5; background: white; }
+        .decrement-paid-btn:hover { background-color: #fee2e2; }
+        .increment-paid-btn { color: #22c55e; border-color: #86efac; background: white; }
+        .increment-paid-btn:hover { background-color: #dcfce7; }
+        
+        .summary-box { background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 0.75rem; padding: 1.5rem; }
+        .next-payment-section { margin-top: 1.5rem; padding-top: 1rem; border-top: 2px dashed #cbd5e1; text-align: right; }
+        .next-payment-amount { font-size: 1.25rem; font-weight: 700; color: #1d4ed8; }
+
+        /* Modales */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-content { background: white; padding: 2rem; border-radius: 0.5rem; width: 90%; max-width: 500px; transform: scale(0.95); transition: transform 0.3s; }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+
+        /* Presupuesto */
+        .bg-green-50 { background-color: #f0fdf4; }
+        .status-pagado { color: #16a34a; font-weight: 600; }
+        .status-pendiente { color: #d97706; font-weight: 600; }
+        #chartContainer_presupuesto { max-width: 450px; margin: 1.5rem auto 0; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6">
+
+    <header class="mb-6 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800"><i class="fas fa-wallet text-blue-600"></i> Control Financiero Pro</h1>
+            <p class="text-xs text-green-600 font-bold mt-1"><i class="fas fa-wifi"></i> Conectado a la Nube</p>
+        </div>
+        <div id="loader" class="text-sm text-blue-500 font-bold"><i class="fas fa-sync fa-spin"></i> Cargando...</div>
+    </header>
+
+    <div class="flex border-b border-gray-300">
+        <button class="tab-btn active" onclick="switchTab('presupuesto', this)">📊 Cuentas y Presupuesto</button>
+        <button class="tab-btn" onclick="switchTab('tarjetas', this)">💳 Tarjetas de Crédito</button>
+    </div>
+
+    <div id="panel-presupuesto" class="tab-content active">
+        <div class="mb-6 flex flex-wrap justify-center gap-2">
+            <button onclick="openModal('modal-cuenta')" class="btn btn-primary"><i class="fas fa-plus-circle mr-2"></i>Agregar Cuenta</button>
+            <button onclick="copiarMesAnterior()" class="btn btn-info"><i class="fas fa-copy mr-2"></i>Copiar Mes Anterior</button>
+            <button onclick="document.getElementById('csv-presupuesto').click()" class="btn btn-success"><i class="fas fa-file-excel mr-2"></i>Importar Excel</button>
+            <input type="file" id="csv-presupuesto" accept=".csv" class="hidden">
+        </div>
+
+        <div class="card">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-semibold text-gray-700">Cuentas del Mes</h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="changeMonth(-1)" class="btn btn-sm bg-gray-200"><i class="fas fa-chevron-left"></i></button>
+                    <span id="lbl-mes-actual" class="font-bold text-lg text-gray-700 min-w-[150px] text-center capitalize"></span>
+                    <button onclick="changeMonth(1)" class="btn btn-sm bg-gray-200"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 border-b">
+                            <th class="p-3 font-semibold">Descripción</th>
+                            <th class="p-3 font-semibold">Categoría</th>
+                            <th class="p-3 font-semibold">Vencimiento</th>
+                            <th class="p-3 font-semibold text-right">Monto</th>
+                            <th class="p-3 font-semibold text-center">Estado</th>
+                            <th class="p-3 font-semibold text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-cuentas" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+            <div id="empty-cuentas" class="p-8 text-center text-gray-400 hidden">No hay cuentas para este mes.</div>
+
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-right border-t pt-4">
+                <p class="font-semibold text-gray-700">Presupuestado: <span id="total-presupuesto" class="text-blue-600 block text-lg font-bold">$0.00</span></p>
+                <p class="font-semibold text-gray-700">Pagado: <span id="total-pagado" class="text-green-600 block text-lg font-bold">$0.00</span></p>
+                <p class="font-semibold text-gray-700">Pendiente: <span id="total-pendiente" class="text-amber-600 block text-lg font-bold">$0.00</span></p>
+            </div>
+
+            <div class="mt-8 pt-6 border-t border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-700 mb-4 text-center">Distribución de Gastos</h3>
+                <div id="chartContainer_presupuesto"><canvas id="grafico-gastos"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="panel-tarjetas" class="tab-content">
+        <div class="mb-6 flex justify-center gap-4">
+            <button onclick="crearTarjeta()" class="btn btn-primary"><i class="fas fa-plus-circle mr-2"></i>Nueva Tarjeta</button>
+            <button onclick="document.getElementById('csv-tarjetas').click()" class="btn btn-warning"><i class="fas fa-file-csv mr-2"></i>Importar CSV</button>
+            <input type="file" id="csv-tarjetas" accept=".csv" class="hidden">
+        </div>
+
+        <div id="contenedor-tarjetas" class="space-y-6"></div>
+
+        <div id="resumen-tarjetas" class="card mt-8 summary-box hidden">
+            <h2 class="text-2xl font-semibold text-indigo-700 mb-4">Resumen General de Deudas</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div><p class="text-sm text-indigo-600">Total Compras Financiadas:</p><p id="sum-financiado" class="text-xl font-bold text-indigo-800">$0.00</p></div>
+                <div><p class="text-sm text-indigo-600">Cuotas Pendientes:</p><p id="sum-pendientes" class="text-xl font-bold text-indigo-800">$0.00</p></div>
+                <div><p class="text-sm text-red-600">Total Deuda Atrasada:</p><p id="sum-atrasado" class="text-xl font-bold text-red-700">$0.00</p></div>
+            </div>
+            <div class="mt-4 border-t border-indigo-300 pt-4">
+                <p class="text-sm text-indigo-600">Gran Total Adeudado:</p>
+                <p id="sum-total" class="text-2xl font-extrabold text-indigo-900">$0.00</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-cuenta" class="modal-overlay">
+        <form id="form-cuenta" class="modal-content">
+            <h3 class="text-xl font-semibold mb-4 text-gray-800">Cuenta / Gasto</h3>
+            <input type="hidden" id="cta-id">
+            <div class="space-y-3">
+                <div><label class="block text-sm font-medium">Descripción</label><input id="cta-desc" class="input-field" required></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block text-sm font-medium">Vencimiento</label><input type="date" id="cta-fecha" class="input-field" required></div>
+                    <div><label class="block text-sm font-medium">Monto ($)</label><input type="number" id="cta-monto" class="input-field" step="0.01" required></div>
+                </div>
+                <div><label class="block text-sm font-medium">Categoría</label>
+                    <select id="cta-cat" class="select-field">
+                        <option>Servicios</option><option>Alquiler/Hipoteca</option><option>Tarjetas de Crédito</option><option>Préstamos</option><option>Supermercado</option><option>Salud</option><option>Transporte</option><option>Varios</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-2">
+                <button type="button" onclick="closeModal('modal-cuenta')" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="modal-pago" class="modal-overlay">
+        <form id="form-pago" class="modal-content">
+            <h3 class="text-xl font-semibold mb-4 text-gray-800">Modificar Pago</h3>
+            <input type="hidden" id="pago-id">
+            <div class="space-y-3">
+                <div><label class="block text-sm font-medium">Fecha de Pago</label><input type="date" id="pago-fecha" class="input-field" required></div>
+                <div><label class="block text-sm font-medium">Monto Real Pagado ($)</label><input type="number" id="pago-monto" class="input-field" step="0.01" required></div>
+            </div>
+            <div class="mt-6 flex justify-end gap-2">
+                <button type="button" onclick="closeModal('modal-pago')" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" class="btn btn-success">Confirmar</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="modal-compra" class="modal-overlay">
+        <form id="form-compra" class="modal-content">
+            <h3 class="text-xl font-semibold mb-4 text-gray-800">Detalle de Compra</h3>
+            <input type="hidden" id="compra-card-id"><input type="hidden" id="compra-id">
+            <div class="space-y-3">
+                <div><label class="block text-sm font-medium">Descripción</label><input id="compra-desc" class="input-field" required placeholder="Ej: Smart TV"></div>
+                <div><label class="block text-sm font-medium">Monto Total ($)</label><input type="number" id="compra-monto" class="input-field" step="0.01" required placeholder="120000"></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block text-sm font-medium">Cuotas Totales</label><input type="number" id="compra-total-c" class="input-field" required placeholder="12"></div>
+                    <div><label class="block text-sm font-medium">Cuotas Pagadas</label><input type="number" id="compra-pagadas-c" class="input-field" value="0"></div>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-2">
+                <button type="button" onclick="closeModal('modal-compra')" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        // ===========================================
+        // ⚠️ TUS CREDENCIALES
+        // ===========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyCspwNS7cIKHvhaQr4Jk5wppP34DlmZqHI",
+            authDomain: "contol-de-gastos.firebaseapp.com",
+            projectId: "contol-de-gastos",
+            storageBucket: "contol-de-gastos.firebasestorage.app",
+            messagingSenderId: "747650828412",
+            appId: "1:747650828412:web:d24a8cb00ae8211df5e1f9"
+        };
+
+        let db;
+        let DATA = { presupuesto: [], tarjetas: [] };
+        let currentDate = new Date();
+        let chartInstance = null;
+
+        window.onload = function() {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                loadFromCloud();
+            } catch (e) {
+                console.error(e);
+                alert("Error cargando. Revisa conexión.");
+            }
+        };
+
+        function loadFromCloud() {
+            db.collection("usuarios").doc("mi_data_financiera").onSnapshot((doc) => {
+                if(doc.exists) { DATA = doc.data(); renderAll(); }
+                document.getElementById('loader').style.display = 'none';
+            });
+        }
+
+        function save() {
+            if(db) db.collection("usuarios").doc("mi_data_financiera").set(DATA).catch(console.error);
+        }
+
+        // --- CORE ---
+        function switchTab(tab, btn) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(`panel-${tab}`).classList.add('active');
+            btn.classList.add('active');
+            if(tab === 'presupuesto') renderChart();
+        }
+        function openModal(id) { document.getElementById(id).classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        function renderAll() { renderPresupuesto(); renderTarjetas(); }
+        function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
+        function formatCurrency(n) { return `$${parseFloat(n).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,')}`; }
+        function fixDate(dStr) { if(!dStr) return new Date(); const p = dStr.split('-'); return new Date(p[0], p[1]-1, p[2]); }
+
+        // --- PRESUPUESTO (Lógica original respetada) ---
+        window.changeMonth = (d) => { currentDate.setMonth(currentDate.getMonth() + d); renderPresupuesto(); }
+
+        function renderPresupuesto() {
+            const m = currentDate.getMonth(), y = currentDate.getFullYear();
+            document.getElementById('lbl-mes-actual').innerText = currentDate.toLocaleString('es-AR', { month: 'long', year: 'numeric' });
+            
+            const items = (DATA.presupuesto||[]).filter(i => {
+                const d = fixDate(i.status === 'Pagado' ? i.paymentDate : i.dueDate);
+                return d.getMonth() === m && d.getFullYear() === y;
+            }).sort((a,b) => fixDate(a.dueDate) - fixDate(b.dueDate));
+
+            const tbody = document.getElementById('tabla-cuentas'); tbody.innerHTML = '';
+            let tPre=0, tPag=0, tPen=0;
+
+            if(items.length===0) document.getElementById('empty-cuentas').classList.remove('hidden');
+            else {
+                document.getElementById('empty-cuentas').classList.add('hidden');
+                items.forEach(i => {
+                    const monto = parseFloat(i.amountBudgeted);
+                    const isPaid = i.status === 'Pagado';
+                    if(isPaid) tPag += parseFloat(i.amountPaid||monto); else { tPre += monto; tPen += monto; }
+
+                    const row = document.createElement('tr');
+                    row.className = isPaid ? 'bg-green-50' : 'border-b hover:bg-gray-50';
+                    row.innerHTML = `
+                        <td class="p-3 font-medium text-gray-800">${i.description}</td>
+                        <td class="p-3 text-gray-500">${i.category}</td>
+                        <td class="p-3">${fixDate(i.dueDate).toLocaleDateString()}</td>
+                        <td class="p-3 text-right font-bold">${formatCurrency(isPaid ? i.amountPaid : monto)}</td>
+                        <td class="p-3 text-center"><span class="${isPaid ? 'status-pagado text-green-600' : 'status-pendiente text-orange-600'}">${i.status}</span></td>
+                        <td class="p-3 text-center">
+                            ${isPaid 
+                                ? `<button onclick="abrirPago('${i.id}')" class="btn-sm bg-yellow-100 text-yellow-700 mr-1" title="Modificar Pago"><i class="fas fa-edit"></i></button>` 
+                                : `<button onclick="abrirPago('${i.id}')" class="btn-sm bg-green-100 text-green-700 mr-1" title="Pagar"><i class="fas fa-check"></i></button>`
+                            }
+                            <button onclick="editarCuenta('${i.id}')" class="btn-sm bg-gray-100 text-blue-600 mr-1"><i class="fas fa-pencil-alt"></i></button>
+                            <button onclick="borrarCuenta('${i.id}')" class="btn-sm bg-red-100 text-red-600"><i class="fas fa-trash"></i></button>
+                        </td>`;
+                    tbody.appendChild(row);
+                });
+            }
+            document.getElementById('total-presupuesto').innerText = formatCurrency(tPag + tPen);
+            document.getElementById('total-pagado').innerText = formatCurrency(tPag);
+            document.getElementById('total-pendiente').innerText = formatCurrency(tPen);
+            renderChart();
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('grafico-gastos').getContext('2d');
+            if(chartInstance) chartInstance.destroy();
+            const m = currentDate.getMonth(), y = currentDate.getFullYear();
+            const paid = (DATA.presupuesto||[]).filter(i => i.status === 'Pagado' && fixDate(i.paymentDate).getMonth() === m);
+            if(paid.length===0) return;
+            const cats = {}; paid.forEach(i => cats[i.category] = (cats[i.category]||0) + parseFloat(i.amountPaid));
+            chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'] }] } });
+        }
+
+        document.getElementById('form-cuenta').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = document.getElementById('cta-id').value;
+            const data = {
+                description: document.getElementById('cta-desc').value,
+                amountBudgeted: parseFloat(document.getElementById('cta-monto').value),
+                dueDate: document.getElementById('cta-fecha').value,
+                category: document.getElementById('cta-cat').value,
+                status: 'Pendiente'
+            };
+            if(id) { const idx = DATA.presupuesto.findIndex(i=>i.id===id); DATA.presupuesto[idx] = { ...DATA.presupuesto[idx], ...data }; }
+            else { if(!DATA.presupuesto) DATA.presupuesto=[]; DATA.presupuesto.push({id: generateId(), ...data}); }
+            save(); closeModal('modal-cuenta'); e.target.reset();
+        });
+
+        window.editarCuenta = (id) => {
+            const i = DATA.presupuesto.find(x => x.id === id);
+            document.getElementById('cta-id').value = id;
+            document.getElementById('cta-desc').value = i.description;
+            document.getElementById('cta-monto').value = i.amountBudgeted;
+            document.getElementById('cta-fecha').value = i.dueDate;
+            document.getElementById('cta-cat').value = i.category;
+            openModal('modal-cuenta');
+        }
+        window.borrarCuenta = (id) => { if(confirm("¿Eliminar?")) { DATA.presupuesto = DATA.presupuesto.filter(x=>x.id!==id); save(); } }
+        window.abrirPago = (id) => {
+            const i = DATA.presupuesto.find(x => x.id === id);
+            document.getElementById('pago-id').value = id;
+            document.getElementById('pago-monto').value = i.status==='Pagado' ? i.amountPaid : i.amountBudgeted;
+            document.getElementById('pago-fecha').value = i.status==='Pagado' ? i.paymentDate : new Date().toISOString().split('T')[0];
+            openModal('modal-pago');
+        }
+        document.getElementById('form-pago').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const i = DATA.presupuesto.find(x => x.id === document.getElementById('pago-id').value);
+            i.status = 'Pagado';
+            i.amountPaid = parseFloat(document.getElementById('pago-monto').value);
+            i.paymentDate = document.getElementById('pago-fecha').value;
+            save(); closeModal('modal-pago');
+        });
+        window.copiarMesAnterior = () => {
+            const m = currentDate.getMonth(), y = currentDate.getFullYear();
+            const prev = new Date(y, m-1);
+            const items = (DATA.presupuesto||[]).filter(i => { const d=fixDate(i.dueDate); return d.getMonth()===prev.getMonth() && d.getFullYear()===prev.getFullYear(); });
+            items.forEach(it => {
+                if(!DATA.presupuesto.some(ex => ex.description===it.description && fixDate(ex.dueDate).getMonth()===m)) {
+                    DATA.presupuesto.push({...it, id: generateId(), dueDate: new Date(y, m, fixDate(it.dueDate).getDate()).toISOString().split('T')[0], status: 'Pendiente', amountPaid: null});
+                }
+            });
+            save();
+        }
+
+        // ================= TARJETAS (ESTILO PRO + EDICIÓN DIRECTA) =================
+        function renderTarjetas() {
+            const con = document.getElementById('contenedor-tarjetas'); con.innerHTML = '';
+            if(!DATA.tarjetas?.length) { con.innerHTML = '<p class="text-center text-gray-500 py-4">No hay tarjetas.</p>'; return; }
+            
+            let gFin=0, gPend=0, gAtr=0;
+
+            DATA.tarjetas.forEach(c => {
+                const el = document.createElement('div'); el.className = 'card relative';
+                el.dataset.id = c.id; // ID para listeners
+                
+                let rows = '', tMes = 0;
+                (c.installments||[]).forEach(ins => {
+                    const m = parseFloat(ins.totalAmount), cuota = m/parseInt(ins.totalInstallments);
+                    const rest = Math.max(0, parseInt(ins.totalInstallments)-parseInt(ins.paidInstallments));
+                    const saldo = rest * cuota;
+                    gFin += m; gPend += saldo;
+                    if(rest > 0) tMes += cuota;
+
+                    rows += `<tr class="border-b hover:bg-gray-50">
+                        <td class="p-3 font-medium">${ins.description}</td>
+                        <td class="p-3 text-right text-gray-500">$${m.toFixed(2)}</td>
+                        <td class="p-3 text-right text-gray-500">$${cuota.toFixed(2)}</td>
+                        <td class="p-3 text-center">
+                            <button onclick="modCuota('${c.id}','${ins.id}',-1)" class="installment-adjust-btn decrement-paid-btn"><i class="fas fa-minus"></i></button>
+                            <span class="mx-1 font-bold text-gray-700">${ins.paidInstallments}/${ins.totalInstallments}</span>
+                            <button onclick="modCuota('${c.id}','${ins.id}',1)" class="installment-adjust-btn increment-paid-btn"><i class="fas fa-plus"></i></button>
+                        </td>
+                        <td class="p-3 text-right font-bold ${rest>0?'text-orange-600':'text-green-600'}">$${saldo.toFixed(2)}</td>
+                        <td class="p-3 text-center">
+                            <button onclick="editarCompra('${c.id}','${ins.id}')" class="text-blue-500 hover:text-blue-700 mr-2"><i class="fas fa-edit"></i></button>
+                            <button onclick="borrarCompra('${c.id}','${ins.id}')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>`;
+                });
+
+                const tAtr = parseFloat(c.overdueAmount||0);
+                gAtr += tAtr;
+                
+                // HTML de la Tarjeta (Inputs directos para editar)
+                el.innerHTML = `
+                    <div class="flex flex-wrap justify-between items-start mb-4">
+                        <input type="text" value="${c.name}" class="text-2xl font-bold text-blue-600 bg-transparent border-none focus:ring-0 w-full md:w-auto card-name-input" placeholder="Nombre Tarjeta">
+                        <button onclick="borrarTarjeta('${c.id}')" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        <div><label class="text-sm text-gray-600 block">Cierre (Día)</label><input type="number" value="${c.closingDay||''}" class="input-field card-close-input" placeholder="Ej: 25"></div>
+                        <div><label class="text-sm text-gray-600 block">Vencimiento (Día)</label><input type="number" value="${c.paymentDueDay||''}" class="input-field card-due-input" placeholder="Ej: 5"></div>
+                    </div>
+                    <div class="text-right mb-4">
+                        <button onclick="pagarCuotaMes('${c.id}')" class="btn btn-sm btn-info text-white"><i class="fas fa-calendar-check mr-2"></i>Registrar Pago Mensual de Cuotas</button>
+                    </div>
+                    <div class="overflow-x-auto rounded border border-gray-200">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-gray-600"><tr><th class="p-3">Descripción</th><th class="p-3 text-right">Total</th><th class="p-3 text-right">Cuota</th><th class="p-3 text-center">Progreso</th><th class="p-3 text-right">Pendiente</th><th class="p-3 text-center"></th></tr></thead>
+                            <tbody class="divide-y divide-gray-100">${rows}</tbody>
+                        </table>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-dashed border-gray-300">
+                        <div class="flex justify-between items-center mb-2">
+                            <button onclick="nuevaCompra('${c.id}')" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Agregar Compra</button>
+                            <div class="text-right">
+                                <label class="text-sm font-bold text-gray-700 mr-2">Deuda Atrasada:</label>
+                                <input type="number" value="${tAtr}" class="input-field w-24 text-right card-overdue-input" step="0.01">
+                            </div>
+                        </div>
+                        <div class="next-payment-section">
+                            <span class="text-gray-600 font-medium">Pago Próximo Estimado:</span>
+                            <span class="next-payment-amount ml-2">$${(tMes+tAtr).toFixed(2)}</span>
+                        </div>
+                    </div>
+                `;
+                con.appendChild(el);
+            });
+
+            document.getElementById('resumen-tarjetas').classList.remove('hidden');
+            document.getElementById('sum-financiado').innerText = formatCurrency(gFin);
+            document.getElementById('sum-pendientes').innerText = formatCurrency(gPend);
+            document.getElementById('sum-atrasado').innerText = formatCurrency(gAtr);
+            document.getElementById('sum-total').innerText = formatCurrency(gPend + gAtr);
+        }
+
+        // Listeners delegados para inputs directos en Tarjeta
+        document.getElementById('contenedor-tarjetas').addEventListener('change', (e) => {
+            const cardEl = e.target.closest('.card');
+            if(!cardEl) return;
+            const id = cardEl.dataset.id;
+            const card = DATA.tarjetas.find(x => x.id === id);
+            
+            if(e.target.classList.contains('card-name-input')) card.name = e.target.value;
+            if(e.target.classList.contains('card-close-input')) card.closingDay = e.target.value;
+            if(e.target.classList.contains('card-due-input')) card.paymentDueDay = e.target.value;
+            if(e.target.classList.contains('card-overdue-input')) card.overdueAmount = parseFloat(e.target.value);
+            
+            save(); renderTarjetas();
+        });
+
+        window.crearTarjeta = () => { const n = prompt("Nombre:"); if(n) { if(!DATA.tarjetas) DATA.tarjetas=[]; DATA.tarjetas.push({id: generateId(), name:n, installments:[], overdueAmount:0}); save(); } }
+        window.borrarTarjeta = (id) => { if(confirm("¿Borrar?")) { DATA.tarjetas = DATA.tarjetas.filter(x=>x.id!==id); save(); } }
+        
+        window.nuevaCompra = (cid) => { document.getElementById('form-compra').reset(); document.getElementById('compra-card-id').value=cid; document.getElementById('compra-id').value=''; openModal('modal-compra'); }
+        window.editarCompra = (cid, iid) => {
+            const c = DATA.tarjetas.find(x=>x.id===cid); const i = c.installments.find(x=>x.id===iid);
+            document.getElementById('compra-card-id').value = cid;
+            document.getElementById('compra-id').value = iid;
+            document.getElementById('compra-desc').value = i.description;
+            document.getElementById('compra-monto').value = i.totalAmount;
+            document.getElementById('compra-total-c').value = i.totalInstallments;
+            document.getElementById('compra-pagadas-c').value = i.paidInstallments;
+            openModal('modal-compra');
+        }
+        document.getElementById('form-compra').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const cid = document.getElementById('compra-card-id').value;
+            const iid = document.getElementById('compra-id').value;
+            const c = DATA.tarjetas.find(x=>x.id===cid);
+            const d = { description: document.getElementById('compra-desc').value, totalAmount: parseFloat(document.getElementById('compra-monto').value), totalInstallments: parseInt(document.getElementById('compra-total-c').value), paidInstallments: parseInt(document.getElementById('compra-pagadas-c').value) };
+            if(iid) { const idx = c.installments.findIndex(x=>x.id===iid); c.installments[idx] = { ...c.installments[idx], ...d }; }
+            else { if(!c.installments) c.installments=[]; c.installments.push({id:generateId(), ...d}); }
+            save(); closeModal('modal-compra');
+        });
+
+        window.modCuota = (cid, iid, delta) => {
+            const c = DATA.tarjetas.find(x=>x.id===cid); const i = c.installments.find(x=>x.id===iid);
+            const n = parseInt(i.paidInstallments)+delta;
+            if(n>=0 && n<=parseInt(i.totalInstallments)) { i.paidInstallments=n; save(); }
+        }
+        window.borrarCompra = (cid, iid) => { if(confirm("¿Borrar?")) { const c=DATA.tarjetas.find(x=>x.id===cid); c.installments=c.installments.filter(x=>x.id!==iid); save(); } }
+        
+        window.pagarCuotaMes = (cid) => {
+            if(confirm("¿Avanzar 1 cuota en todas las compras pendientes de esta tarjeta?")) {
+                const c = DATA.tarjetas.find(x=>x.id===cid);
+                let count = 0;
+                c.installments.forEach(i => { if(i.paidInstallments < i.totalInstallments) { i.paidInstallments++; count++; } });
+                if(count>0) { save(); alert(`Se avanzó cuota en ${count} compras.`); } else alert("No había cuotas pendientes.");
+            }
+        }
+
+        // CSV Tarjetas
+        document.getElementById('csv-tarjetas').addEventListener('change', (e) => {
+            const f = e.target.files[0]; if(!f) return;
+            const r = new FileReader();
+            r.onload = (evt) => {
+                const lines = evt.target.result.split('\n');
+                let cName = "Tarjeta Importada";
+                if(lines.some(l => l.includes("Visa"))) cName = "Visa Importada";
+                if(!DATA.tarjetas) DATA.tarjetas = [];
+                let card = DATA.tarjetas.find(c => c.name === cName);
+                if(!card) { card = { id: generateId(), name: cName, installments: [], overdueAmount: 0 }; DATA.tarjetas.push(card); }
+                
+                lines.forEach(l => {
+                    if(l.includes('$') && l.includes(',')) {
+                        const p = l.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                        if(p.length > 2 && p[1] && p[4]) {
+                            const desc = p[1].replace(/"/g,'').trim();
+                            const amt = parseFloat(p[4].replace(/[$.]/g,'').replace(',','.').trim());
+                            if(amt > 0) {
+                                let tQ=1, pQ=1;
+                                if(p[2] && p[2].includes(' de ')) { const q=p[2].split(' de '); pQ=parseInt(q[0]); tQ=parseInt(q[1]); }
+                                if(!card.installments.some(i => i.description === desc)) {
+                                    card.installments.push({id: generateId(), description: desc, totalAmount: amt, totalInstallments: tQ, paidInstallments: pQ});
+                                }
+                            }
+                        }
+                    }
+                });
+                save(); e.target.value = ''; alert("Importado!");
+            };
+            r.readAsText(f);
+        });
+
+    </script>
+</body>
+</html>
